@@ -1,0 +1,17 @@
+# Carpeta donde se guardan los audios
+descargas/
+
+# Caché de Python
+__pycache__/
+*.py[cod]
+
+# Entorno virtual
+venv/
+.env
+
+# Configuración del editor
+.vscode/
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
