@@ -4,6 +4,9 @@ Backend desarrollado con **Flask** y **yt-dlp** para obtener información y desc
 
 Este proyecto está pensado para ejecutarse **únicamente en una red local (LAN)** y ser consumido por la aplicación Flutter.
 
+Descargar zip ejecutable en este link:
+[Playtuve Local Server Executable](https://drive.google.com/file/d/1u_9LWvOJg0USvh95zFZZdOBgu-9dwVVq/view?usp=sharing)
+
 ---
 
 # Características
