@@ -5,9 +5,7 @@ import uuid
 
 app = Flask(__name__)
 
-# --- NUEVO: OBTENER LA RUTA REAL DONDE ESTÁ EL .EXE ---
-DIRECTORIO_RAIZ = os.getcwd()
-DOWNLOAD_FOLDER = os.path.join(DIRECTORIO_RAIZ, "descargas")
+DOWNLOAD_FOLDER = "descargas"
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
 @app.route("/")
@@ -28,7 +26,6 @@ def descargar_audio():
     opciones = {
         "format": "bestaudio[ext=m4a]/bestaudio/best",
         "outtmpl": ruta_salida,
-        "ffmpeg_location": DIRECTORIO_RAIZ,  # <-- NUEVO: Le dice exactamente dónde está ffmpeg.exe
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -64,10 +61,12 @@ def descargar_audio():
 @app.route("/info", methods=["POST"])
 def obtener_info():
     data = request.get_json()
+
     if not data or "url" not in data:
         return jsonify({"error": "Falta el parámetro 'url'"}), 400
 
     url = data["url"]
+
     opciones = {
         "quiet": True,
         "no_warnings": True,
@@ -78,11 +77,13 @@ def obtener_info():
         with yt_dlp.YoutubeDL(opciones) as ydl:
             info = ydl.extract_info(url, download=False)
 
-        return jsonify({
-            "titulo": info.get("title"),
-            "duracion": info.get("duration"),
-            "canal": info.get("uploader"),
-        })
+        return jsonify(
+            {
+                "titulo": info.get("title"),
+                "duracion": info.get("duration"),
+                "canal": info.get("uploader"),
+            }
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

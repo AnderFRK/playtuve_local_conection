@@ -1,17 +1,33 @@
-# Carpeta donde se guardan los audios
+# ==========================================
+# PLAYTUVE BACKEND - GITIGNORE
+# ==========================================
+
+# 1. Carpetas generadas por PyInstaller (Archivos de compilación)
+build/
+dist/
+*.spec
+
+# 2. Descargas y archivos temporales generados por el servidor
 descargas/
 
-# Caché de Python
+# 3. Archivos Ejecutables y Binarios pesados
+*.exe
+playit.exe
+ffmpeg.exe
+ffprobe.exe
+ffplay.exe
+
+# 4. Empaquetados y carpetas de lanzamiento final
+playtuve_server/
+*.zip
+
+# 5. Archivos de Configuración (¡Contienen tokens secretos!)
+playtuve_config.json
+
+# 6. Caché nativo de Python y Entornos Virtuales
 __pycache__/
 *.py[cod]
-
-# Entorno virtual
+*$py.class
 venv/
+env/
 .env
-
-# Configuración del editor
-.vscode/
-
-# Archivos del sistema
-.DS_Store
-Thumbs.db
