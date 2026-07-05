@@ -6,8 +6,8 @@ import os
 import sys
 import json
 import webbrowser
+import socket
 
-# Intentamos cargar pyngrok por si decides usar la opción de Ngrok
 try:
     from pyngrok import ngrok
     NGROK_DISPONIBLE = True
@@ -16,19 +16,11 @@ except ImportError:
 
 CONFIG_FILE = "playtuve_config.json"
 
-# --- LA FUNCIÓN MÁGICA PARA PYINSTALLER ---
 def obtener_ruta_recurso(nombre_archivo):
-    """
-    Obtiene la ruta absoluta del recurso.
-    Funciona tanto en desarrollo normal como compilado en un .exe
-    """
     try:
-        # Si está compilado, PyInstaller extrae los datos aquí:
         ruta_base = sys._MEIPASS
     except Exception:
-        # Si no está compilado, usa la carpeta actual:
         ruta_base = os.path.abspath(".")
-    
     return os.path.join(ruta_base, nombre_archivo)
 
 
@@ -36,23 +28,22 @@ class PlayTuveDashboard:
     def __init__(self, root):
         self.root = root
         self.root.title("PlayTuve - Centro de Control Híbrido")
-        self.root.geometry("700x580")
+        self.root.geometry("700x680") 
         self.root.resizable(False, False)
         
-        # Estética Oscura / Rojo PlayTuve
         self.bg_color = "#121212"
         self.card_color = "#1e1e1e"
         self.accent_color = "#ff3333"
         self.text_color = "#ffffff"
         self.root.configure(bg=self.bg_color)
         
-        # Control de procesos
         self.proceso_servidor = None
         self.proceso_playit = None
+        self.proceso_ssh = None
         self.ngrok_tunnel = None
         self.hilo_lectura = None
+        self.hilo_ssh = None
         
-        # Cargar configuración
         self.config = self._cargar_config()
         self._crear_interfaz()
 
@@ -74,37 +65,71 @@ class PlayTuveDashboard:
             self.root, text="🕹️ PLAYTUVE - DASHBOARD DE CONTROL", 
             font=("Arial", 14, "bold"), bg=self.bg_color, fg=self.accent_color
         )
-        lbl_titulo.pack(pady=15)
+        lbl_titulo.pack(pady=10)
 
+        # 1. BOTONES DE SERVIDORES
         frame_servidores = tk.LabelFrame(
             self.root, text=" Modos de Hospedaje ", font=("Arial", 9, "bold"),
-            bg=self.bg_color, fg="#aaaaaa", bd=1, padx=10, pady=10
+            bg=self.bg_color, fg="#aaaaaa", bd=1, padx=20, pady=10
         )
         frame_servidores.pack(fill="x", padx=20, pady=5)
+        frame_servidores.columnconfigure(0, weight=1)
+        frame_servidores.columnconfigure(1, weight=1)
 
         self.btn_local = tk.Button(
             frame_servidores, text="🌐 Modo Local (WiFi)", font=("Arial", 9, "bold"),
             bg=self.card_color, fg=self.text_color, activebackground="#333333", activeforeground="white",
-            width=18, pady=8, bd=0, cursor="hand2", command=self.iniciar_local
+            width=25, pady=8, bd=0, cursor="hand2", command=self.iniciar_local
         )
-        self.btn_local.pack(side="left", padx=10)
+        self.btn_local.grid(row=0, column=0, padx=10, pady=5)
 
         self.btn_playit = tk.Button(
             frame_servidores, text="🚀 Modo Público (Playit)", font=("Arial", 9, "bold"),
             bg=self.card_color, fg=self.text_color, activebackground="#333333", activeforeground="white",
-            width=20, pady=8, bd=0, cursor="hand2", command=self.iniciar_playit
+            width=25, pady=8, bd=0, cursor="hand2", command=self.iniciar_playit
         )
-        self.btn_playit.pack(side="left", padx=10)
+        self.btn_playit.grid(row=0, column=1, padx=10, pady=5)
 
         self.btn_ngrok = tk.Button(
             frame_servidores, text="🔥 Modo Público (Ngrok)", font=("Arial", 9, "bold"),
             bg=self.card_color, fg=self.text_color, activebackground="#333333", activeforeground="white",
-            width=20, pady=8, bd=0, cursor="hand2", command=self.iniciar_ngrok
+            width=25, pady=8, bd=0, cursor="hand2", command=self.iniciar_ngrok
         )
-        self.btn_ngrok.pack(side="left", padx=10)
+        self.btn_ngrok.grid(row=1, column=0, padx=10, pady=5)
 
+        self.btn_ssh = tk.Button(
+            frame_servidores, text="🕵️ Modo Público (Anónimo)", font=("Arial", 9, "bold"),
+            bg=self.card_color, fg=self.text_color, activebackground="#333333", activeforeground="white",
+            width=25, pady=8, bd=0, cursor="hand2", command=self.iniciar_ssh
+        )
+        self.btn_ssh.grid(row=1, column=1, padx=10, pady=5)
+
+        # --- NUEVA SECCIÓN: CAJA DE ENLACE ACTIVO ---
+        frame_enlace = tk.Frame(self.root, bg="#2a2a2a", pady=10)
+        frame_enlace.pack(fill="x", padx=20, pady=10)
+        
+        tk.Label(frame_enlace, text="🔗 ENLACE ACTIVO:", font=("Arial", 10, "bold"), bg="#2a2a2a", fg="#ffcc00").pack(side="left", padx=15)
+        
+        self.url_variable = tk.StringVar()
+        self.url_variable.set("Servidor apagado...")
+        
+        self.entry_url = tk.Entry(
+            frame_enlace, textvariable=self.url_variable, font=("Consolas", 11, "bold"), 
+            bg="#111111", fg="#00ff00", bd=0, state="readonly", readonlybackground="#111111"
+        )
+        self.entry_url.pack(side="left", fill="x", expand=True, padx=10, ipady=5)
+
+        self.btn_copiar = tk.Button(
+            frame_enlace, text="📋 Copiar", font=("Arial", 9, "bold"),
+            bg="#ffcc00", fg="black", activebackground="#e6b800", activeforeground="black",
+            bd=0, cursor="hand2", padx=15, pady=5, state="disabled", command=self.copiar_enlace
+        )
+        self.btn_copiar.pack(side="right", padx=15)
+        # ---------------------------------------------
+
+        # 2. BOTONES DE HERRAMIENTAS
         frame_herramientas = tk.Frame(self.root, bg=self.bg_color)
-        frame_herramientas.pack(fill="x", padx=20, pady=15)
+        frame_herramientas.pack(fill="x", padx=20, pady=5)
 
         self.btn_config = tk.Button(
             frame_herramientas, text="⚙️ Configuración", font=("Arial", 9, "bold"),
@@ -127,14 +152,32 @@ class PlayTuveDashboard:
         )
         self.btn_apagar.pack(side="right")
 
+        # 3. CONSOLA DE LOGS
         lbl_logs = tk.Label(self.root, text="Logs del Sistema en Tiempo Real:", bg=self.bg_color, fg="#888888", font=("Arial", 9))
-        lbl_logs.pack(anchor="w", padx=20, pady=(10, 0))
+        lbl_logs.pack(anchor="w", padx=20, pady=(5, 0))
         
         self.consola = scrolledtext.ScrolledText(
-            self.root, height=15, bg="#000000", fg="#33ff33", 
+            self.root, height=12, bg="#000000", fg="#33ff33", 
             font=("Consolas", 9), bd=0, padx=10, pady=10, state="disabled"
         )
         self.consola.pack(fill="both", padx=20, pady=5, expand=True)
+
+    # --- NUEVA FUNCIÓN PARA COPIAR AL PORTAPAPELES ---
+    def copiar_enlace(self):
+        url = self.url_variable.get()
+        if "http" in url:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(url)
+            messagebox.showinfo("Copiado", "¡Enlace copiado al portapapeles!\nPégalo en tu app de Flutter.")
+    
+    def set_url_activa(self, url):
+        self.url_variable.set(url)
+        self.btn_copiar.config(state="normal")
+
+    def limpiar_url(self):
+        self.url_variable.set("Servidor apagado...")
+        self.btn_copiar.config(state="disabled")
+    # --------------------------------------------------
 
     def log(self, mensaje):
         self.consola.config(state="normal")
@@ -191,123 +234,151 @@ class PlayTuveDashboard:
         self.hilo_lectura = threading.Thread(target=self._leer_consola_flask, daemon=True)
         self.hilo_lectura.start()
 
+    def obtener_ip_local(self):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            s.close()
+            return ip
+        except Exception:
+            return "127.0.0.1"
+
     def iniciar_local(self):
         if self.proceso_servidor: return
         self.consola.config(state="normal")
         self.consola.delete("1.0", tk.END)
         self.log(">>> Levantando backend en Red Local...")
+        
+        ip_real = self.obtener_ip_local()
+        self.set_url_activa(f"http://{ip_real}:5000")
+        
         self._arrancar_flask_base()
         self._conmutar_botones(activo=True)
 
     def iniciar_playit(self):
         if self.proceso_servidor: return
-        
-        # Usamos la ruta protegida por si estamos compilados en .exe
         ruta_playit = obtener_ruta_recurso("playit.exe")
-        
         if not os.path.exists(ruta_playit):
-            respuesta = messagebox.askyesno(
-                "Playit no encontrado", 
-                "No se encontró 'playit.exe'.\n\n"
-                "¿Deseas abrir la página oficial para descargarlo? (Recuerda renombrarlo y ponerlo junto al panel)"
-            )
-            if respuesta:
-                webbrowser.open("https://playit.gg/download")
+            respuesta = messagebox.askyesno("Error", "¿Deseas descargar playit.exe?")
+            if respuesta: webbrowser.open("https://playit.gg/download")
             return
 
         self.consola.config(state="normal")
         self.consola.delete("1.0", tk.END)
         self.log(">>> Lanzando servidor Flask...")
-        self._arrancar_flask_base()
         
-        self.log(">>> Abriendo agente Playit.gg...")
+        self.set_url_activa("Revisa la ventana negra de Playit.gg")
+        
+        self._arrancar_flask_base()
         self.proceso_playit = subprocess.Popen(
-            [ruta_playit],
-            creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
+            [ruta_playit], creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
         )
         self._conmutar_botones(activo=True)
 
     def iniciar_ngrok(self):
         if self.proceso_servidor: return
-        if not NGROK_DISPONIBLE:
-            messagebox.showerror("Librería Faltante", "Instala pyngrok:\npip install pyngrok")
-            return
-
+        if not NGROK_DISPONIBLE: return messagebox.showerror("Error", "Instala pyngrok")
         token = self.config.get("ngrok_token", "")
-        if not token:
-            messagebox.showwarning("Falta Authtoken", "Ve a '⚙️ Configuración' y guarda tu Authtoken de Ngrok primero.")
-            return
+        if not token: return messagebox.showwarning("Aviso", "Guarda tu token de Ngrok en Configuración.")
 
         self.consola.config(state="normal")
         self.consola.delete("1.0", tk.END)
-        self.log(">>> Solicitando túnel dinámico a Ngrok...")
+        self.log(">>> Solicitando túnel a Ngrok...")
         
         try:
             ngrok.set_auth_token(token)
             self.ngrok_tunnel = ngrok.connect(5000)
             url_publica = self.ngrok_tunnel.public_url
             
-            self.log("=" * 60)
-            self.log(f"🌍 LINK PÚBLICO NGROK: {url_publica}")
-            self.log("=" * 60)
+            self.set_url_activa(url_publica)
             
             self._arrancar_flask_base()
             self._conmutar_botones(activo=True)
         except Exception as e:
-            self.log(f"❌ Error al mapear Ngrok: {str(e)}")
+            self.log(f"❌ Error Ngrok: {str(e)}")
+
+    def iniciar_ssh(self):
+        if self.proceso_servidor: return
+        self.consola.config(state="normal")
+        self.consola.delete("1.0", tk.END)
+        self.log(">>> Lanzando servidor Flask...")
+        self._arrancar_flask_base()
+        
+        ruta_llave_ssh = os.path.expanduser("~/.ssh/id_rsa")
+        if not os.path.exists(ruta_llave_ssh):
+            self.log(">>> Generando credenciales invisibles...")
+            subprocess.run(["ssh-keygen", "-t", "rsa", "-b", "2048", "-N", "", "-f", ruta_llave_ssh], check=True, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+
+        self.log(">>> Conectando a localhost.run...")
+        comando_ssh = ["ssh", "-o", "StrictHostKeyChecking=no", "-R", "80:127.0.0.1:5000", "ssh.localhost.run"]
+        
+        try:
+            self.proceso_ssh = subprocess.Popen(
+                comando_ssh, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+
+            def leer_ssh():
+                for linea in iter(self.proceso_ssh.stdout.readline, ''):
+                    if linea:
+                        texto = linea.strip()
+                        if "lhr.life" in texto or "lhr.run" in texto:
+                            url_final = "https://" + texto.split()[-1].replace("https://", "")
+                            self.root.after(0, lambda: self.set_url_activa(url_final))
+                            self.log("✅ ¡Túnel establecido exitosamente!")
+                        elif "==" not in texto and "[7m" not in texto: # Limpiamos la basura del QR
+                            self.log(f"[SSH] {texto}")
+                self.proceso_ssh.stdout.close()
+                
+            self.hilo_ssh = threading.Thread(target=leer_ssh, daemon=True)
+            self.hilo_ssh.start()
+            self._conmutar_botones(activo=True)
+            
+        except Exception as e:
+            self.log(f"❌ Error SSH: {str(e)}")
 
     def apagar_servidor(self):
-        self.log("\n>>> Iniciando apagado controlado...")
-        
+        self.log("\n>>> Iniciando apagado...")
         if self.proceso_servidor:
             self.proceso_servidor.terminate()
             self.proceso_servidor.wait()
             self.proceso_servidor = None
-            self.log("✅ Servidor Flask detenido.")
-            
         if self.proceso_playit:
             self.proceso_playit.terminate()
             self.proceso_playit = None
-            self.log("✅ Túnel Playit cerrado.")
-            
         if self.ngrok_tunnel:
             ngrok.disconnect(self.ngrok_tunnel.public_url)
             self.ngrok_tunnel = None
-            self.log("✅ Túnel Ngrok destruido.")
+        if self.proceso_ssh:
+            self.proceso_ssh.terminate()
+            self.proceso_ssh = None
             
+        self.limpiar_url()
+        self.log("✅ Sistema apagado y desconectado.")
         self._conmutar_botones(activo=False)
 
     def limpiar_residuos(self):
         ruta_descargas = os.path.join(os.getcwd(), "descargas")
-        if not os.path.exists(ruta_descargas):
-            self.log(">>> Escaneo: Carpeta vacía.")
-            return
-            
+        if not os.path.exists(ruta_descargas): return
         archivos = [f for f in os.listdir(ruta_descargas) if f.endswith('.m4a')]
-        if not archivos:
-            self.log(">>> Escaneo: 0 residuos detectados.")
-            return
-            
-        confirmar = messagebox.askyesno("Limpiar", f"¿Eliminar {len(archivos)} residuos?")
-        if confirmar:
-            eliminados = 0
+        if not archivos: return
+        if messagebox.askyesno("Limpiar", f"¿Eliminar {len(archivos)} residuos?"):
             for archivo in archivos:
-                try:
-                    os.remove(os.path.join(ruta_descargas, archivo))
-                    eliminados += 1
-                except Exception:
-                    pass
-            self.log(f"🗑️ Limpieza: {eliminados} archivos removidos.")
+                try: os.remove(os.path.join(ruta_descargas, archivo))
+                except Exception: pass
+            self.log("🗑️ Limpieza completada.")
 
     def _conmutar_botones(self, activo):
         estado_inversor = "disabled" if activo else "normal"
         self.btn_local.config(state=estado_inversor)
         self.btn_playit.config(state=estado_inversor)
         self.btn_ngrok.config(state=estado_inversor)
+        self.btn_ssh.config(state=estado_inversor)
         self.btn_apagar.config(state="normal" if activo else "disabled")
 
 def al_cerrar_ventana():
-    if dashboard.proceso_servidor or dashboard.proceso_playit or dashboard.ngrok_tunnel:
+    if dashboard.proceso_servidor or dashboard.proceso_playit or dashboard.ngrok_tunnel or dashboard.proceso_ssh:
         dashboard.apagar_servidor()
     ventana.destroy()
 
