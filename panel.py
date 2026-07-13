@@ -48,13 +48,17 @@ class PlayTuveDashboard:
         self._crear_interfaz()
 
     def _cargar_config(self):
+        # Añadimos "navegador" por defecto
+        config_default = {"ngrok_token": "", "navegador": "firefox"}
         if os.path.exists(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, "r") as f:
-                    return json.load(f)
+                    data = json.load(f)
+                    config_default.update(data) # Combina lo guardado con lo default
+                    return config_default
             except Exception:
                 pass
-        return {"ngrok_token": ""}
+        return config_default
 
     def _guardar_config(self):
         with open(CONFIG_FILE, "w") as f:
@@ -104,7 +108,7 @@ class PlayTuveDashboard:
         )
         self.btn_ssh.grid(row=1, column=1, padx=10, pady=5)
 
-        # --- NUEVA SECCIÓN: CAJA DE ENLACE ACTIVO ---
+        # --- CAJA DE ENLACE ACTIVO ---
         frame_enlace = tk.Frame(self.root, bg="#2a2a2a", pady=10)
         frame_enlace.pack(fill="x", padx=20, pady=10)
         
@@ -125,7 +129,6 @@ class PlayTuveDashboard:
             bd=0, cursor="hand2", padx=15, pady=5, state="disabled", command=self.copiar_enlace
         )
         self.btn_copiar.pack(side="right", padx=15)
-        # ---------------------------------------------
 
         # 2. BOTONES DE HERRAMIENTAS
         frame_herramientas = tk.Frame(self.root, bg=self.bg_color)
@@ -162,7 +165,6 @@ class PlayTuveDashboard:
         )
         self.consola.pack(fill="both", padx=20, pady=5, expand=True)
 
-    # --- NUEVA FUNCIÓN PARA COPIAR AL PORTAPAPELES ---
     def copiar_enlace(self):
         url = self.url_variable.get()
         if "http" in url:
@@ -177,7 +179,6 @@ class PlayTuveDashboard:
     def limpiar_url(self):
         self.url_variable.set("Servidor apagado...")
         self.btn_copiar.config(state="disabled")
-    # --------------------------------------------------
 
     def log(self, mensaje):
         self.consola.config(state="normal")
@@ -188,28 +189,36 @@ class PlayTuveDashboard:
     def abrir_configuracion(self):
         ventana_cfg = tk.Toplevel(self.root)
         ventana_cfg.title("Configuración de Servicios")
-        ventana_cfg.geometry("450x250")
+        ventana_cfg.geometry("450x330")
         ventana_cfg.configure(bg=self.bg_color)
         ventana_cfg.resizable(False, False)
 
+        # --- CAMPO NGROK ---
         tk.Label(ventana_cfg, text="Authtoken de Ngrok:", bg=self.bg_color, fg="white", font=("Arial", 10, "bold")).pack(pady=(20, 5))
-        
         entry_token = tk.Entry(ventana_cfg, width=50, bg=self.card_color, fg="white", bd=1, insertbackground="white")
         entry_token.pack(pady=5)
         entry_token.insert(0, self.config.get("ngrok_token", ""))
 
+        # --- NUEVO CAMPO: NAVEGADOR (Texto Libre) ---
+        tk.Label(ventana_cfg, text="Navegador para Cookies (ej: firefox, edge, chrome):", bg=self.bg_color, fg="white", font=("Arial", 10, "bold")).pack(pady=(15, 5))
+        entry_nav = tk.Entry(ventana_cfg, width=50, bg=self.card_color, fg="white", bd=1, insertbackground="white")
+        entry_nav.pack(pady=5)
+        entry_nav.insert(0, self.config.get("navegador", "firefox"))
+
         def guardar():
             self.config["ngrok_token"] = entry_token.get().strip()
+            # Guardamos el navegador siempre en minúsculas para evitar errores en yt-dlp
+            self.config["navegador"] = entry_nav.get().strip().lower() 
             self._guardar_config()
-            messagebox.showinfo("Guardado", "Authtoken guardado correctamente.", parent=ventana_cfg)
+            messagebox.showinfo("Guardado", "Configuración guardada correctamente.", parent=ventana_cfg)
             ventana_cfg.destroy()
 
         tk.Button(
-            ventana_cfg, text="💾 Guardar Token", bg=self.accent_color, fg="white", bd=0, 
+            ventana_cfg, text=" Guardar Cambios", bg=self.accent_color, fg="white", bd=0, 
             padx=15, pady=5, cursor="hand2", command=guardar
-        ).pack(pady=10)
+        ).pack(pady=20)
 
-        tk.Label(ventana_cfg, text="¿No tienes cuenta de Ngrok?", bg=self.bg_color, fg="#aaaaaa").pack(pady=(15, 0))
+        tk.Label(ventana_cfg, text="¿No tienes cuenta de Ngrok?", bg=self.bg_color, fg="#aaaaaa").pack(pady=(0, 0))
         tk.Button(
             ventana_cfg, text="Obtener Authtoken aquí", bg=self.bg_color, fg="#3399ff", bd=0, 
             cursor="hand2", command=lambda: webbrowser.open("https://dashboard.ngrok.com/get-started/your-authtoken")
@@ -228,6 +237,7 @@ class PlayTuveDashboard:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding="utf-8",
             bufsize=1,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
         )
@@ -296,7 +306,7 @@ class PlayTuveDashboard:
             self._arrancar_flask_base()
             self._conmutar_botones(activo=True)
         except Exception as e:
-            self.log(f"❌ Error Ngrok: {str(e)}")
+            self.log(f"Error Ngrok: {str(e)}")
 
     def iniciar_ssh(self):
         if self.proceso_servidor: return
@@ -326,9 +336,9 @@ class PlayTuveDashboard:
                         if "lhr.life" in texto or "lhr.run" in texto:
                             url_final = "https://" + texto.split()[-1].replace("https://", "")
                             self.root.after(0, lambda: self.set_url_activa(url_final))
-                            self.log("✅ ¡Túnel establecido exitosamente!")
-                        elif "==" not in texto and "[7m" not in texto: # Limpiamos la basura del QR
-                            self.log(f"[SSH] {texto}")
+                            self.root.after(0, lambda: self.log("¡Túnel establecido exitosamente!"))
+                        elif "==" not in texto and "[7m" not in texto:
+                            self.root.after(0, lambda msg=f"[SSH] {texto}": self.log(msg))
                 self.proceso_ssh.stdout.close()
                 
             self.hilo_ssh = threading.Thread(target=leer_ssh, daemon=True)
@@ -336,7 +346,7 @@ class PlayTuveDashboard:
             self._conmutar_botones(activo=True)
             
         except Exception as e:
-            self.log(f"❌ Error SSH: {str(e)}")
+            self.log(f"Error SSH: {str(e)}")
 
     def apagar_servidor(self):
         self.log("\n>>> Iniciando apagado...")
@@ -355,7 +365,7 @@ class PlayTuveDashboard:
             self.proceso_ssh = None
             
         self.limpiar_url()
-        self.log("✅ Sistema apagado y desconectado.")
+        self.log(" Sistema apagado y desconectado.")
         self._conmutar_botones(activo=False)
 
     def limpiar_residuos(self):
@@ -367,7 +377,7 @@ class PlayTuveDashboard:
             for archivo in archivos:
                 try: os.remove(os.path.join(ruta_descargas, archivo))
                 except Exception: pass
-            self.log("🗑️ Limpieza completada.")
+            self.log("Limpieza completada.")
 
     def _conmutar_botones(self, activo):
         estado_inversor = "disabled" if activo else "normal"
@@ -376,6 +386,7 @@ class PlayTuveDashboard:
         self.btn_ngrok.config(state=estado_inversor)
         self.btn_ssh.config(state=estado_inversor)
         self.btn_apagar.config(state="normal" if activo else "disabled")
+
 
 def al_cerrar_ventana():
     if dashboard.proceso_servidor or dashboard.proceso_playit or dashboard.ngrok_tunnel or dashboard.proceso_ssh:
